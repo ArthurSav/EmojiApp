@@ -1,4 +1,4 @@
-#Emojis (Kotlin web app) ☀️
+# Emojis (Kotlin web app) ☀️
 
 Playground project with kotlin for web.
 
