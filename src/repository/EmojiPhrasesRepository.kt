@@ -1,21 +1,28 @@
 package com.emojiapp.repository
 
-import com.emojiapp.model.*
+import com.emojiapp.model.EmojiPhrase
+import com.emojiapp.model.EmojiPhrases
+import com.emojiapp.model.User
+import com.emojiapp.model.Users
 import com.emojiapp.repository.DatabaseFactory.dbQuery
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.transactions.*
-import java.lang.IllegalArgumentException
 
 class EmojiPhrasesRepository : Repository {
-    override suspend fun add(userId: String, emojiValue: String, phraseValue: String) {
-        transaction {
-            EmojiPhrases.insert {
+    override suspend fun add(userId: String, emojiValue: String, phraseValue: String) =
+        dbQuery {
+            val insert = EmojiPhrases.insert {
                 it[user] = userId
                 it[emoji] = emojiValue
                 it[phrase] = phraseValue
             }
+
+            val result = insert.resultedValues?.get(0)
+            if (result != null) {
+                toEmojiPhrase(result)
+            }
+            else null
         }
-    }
+
 
     override suspend fun phrase(id: Int): EmojiPhrase? = dbQuery {
         EmojiPhrases.select {
@@ -78,6 +85,11 @@ class EmojiPhrasesRepository : Repository {
             it[passwordHash] = user.passwordHash
         }
         Unit
+    }
+
+    override suspend fun userById(userId: String): User? = dbQuery {
+        Users.select { Users.id.eq(userId) }
+            .map { User(userId, it[Users.email], it[Users.displayName], it[Users.passwordHash]) }.singleOrNull()
     }
 
     private fun toEmojiPhrase(row: ResultRow): EmojiPhrase =

@@ -1,31 +1,46 @@
 package com.emojiapp
 
-import com.emojiapp.api.phrase
+import com.emojiapp.api.login
+import com.emojiapp.api.phrasesApi
 import com.emojiapp.app.*
 import com.emojiapp.model.EPSession
 import com.emojiapp.model.User
 import com.emojiapp.repository.DatabaseFactory
 import com.emojiapp.repository.EmojiPhrasesRepository
-import io.ktor.application.*
-import io.ktor.response.*
-import io.ktor.request.*
-import com.squareup.moshi.kotlin.reflect.*
-import freemarker.cache.*
-import io.ktor.application.*
-import io.ktor.auth.*
-import io.ktor.features.*
-import io.ktor.freemarker.*
-import io.ktor.http.*
-import io.ktor.http.content.*
-import io.ktor.locations.*
-import io.ktor.request.*
-import io.ktor.response.*
-import io.ktor.routing.*
-import io.ktor.sessions.*
-import org.slf4j.event.*
-import java.net.*
-import java.util.concurrent.*
-import com.ryanharter.ktor.moshi.*
+import com.ryanharter.ktor.moshi.moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import freemarker.cache.ClassTemplateLoader
+import io.ktor.application.Application
+import io.ktor.application.ApplicationCall
+import io.ktor.application.call
+import io.ktor.application.install
+import io.ktor.auth.Authentication
+import io.ktor.auth.authentication
+import io.ktor.auth.jwt.jwt
+import io.ktor.features.CallLogging
+import io.ktor.features.ContentNegotiation
+import io.ktor.features.DefaultHeaders
+import io.ktor.features.StatusPages
+import io.ktor.freemarker.FreeMarker
+import io.ktor.gson.gson
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.resources
+import io.ktor.http.content.static
+import io.ktor.locations.Locations
+import io.ktor.locations.locations
+import io.ktor.request.header
+import io.ktor.request.host
+import io.ktor.response.respondRedirect
+import io.ktor.response.respondText
+import io.ktor.routing.routing
+import io.ktor.sessions.SessionTransportTransformerMessageAuthentication
+import io.ktor.sessions.Sessions
+import io.ktor.sessions.cookie
+import org.slf4j.event.Level
+import java.net.URI
+import java.util.concurrent.TimeUnit
 
 
 fun main(args: Array<String>): Unit = io.ktor.server.netty.EngineMain.main(args)
@@ -45,9 +60,7 @@ fun Application.module(testing: Boolean = false) {
         }
     }
     install(ContentNegotiation) {
-        moshi() {
-            this.add(KotlinJsonAdapterFactory())
-        }
+        gson()
     }
     install(CallLogging) {
         level = Level.INFO
@@ -67,6 +80,22 @@ fun Application.module(testing: Boolean = false) {
 
     val db = EmojiPhrasesRepository()
 
+    val jwtService = JwtService()
+
+    install(Authentication) {
+        jwt("jwt") {
+            verifier(jwtService.verifier)
+            realm = "emojiapp"
+            validate {
+                val payload = it.payload
+                val claim = payload.getClaim("id")
+                val claimString = claim.asString()
+                val user = db.userById(claimString)
+                user
+            }
+        }
+    }
+
     routing {
 
         static("/static") {
@@ -81,7 +110,8 @@ fun Application.module(testing: Boolean = false) {
         signup(db, hashFunction)
 
         //api
-        phrase(db)
+        login(db, jwtService)
+        phrasesApi(db)
     }
 }
 
@@ -98,4 +128,6 @@ fun ApplicationCall.securityCode(date: Long, user: User, hashFunction: (String) 
 
 fun ApplicationCall.verifyCode(date: Long, user: User, code: String, hashFunction: (String) -> String) =
     (System.currentTimeMillis() - date).let { it > 0 && it < TimeUnit.MICROSECONDS.convert(2, TimeUnit.HOURS) }
+
+val ApplicationCall.apiUser get() = authentication.principal<User>()
 
